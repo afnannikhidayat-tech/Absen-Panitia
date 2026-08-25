@@ -1,26 +1,30 @@
 <!doctype html>
 <html lang="id">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Absensi Panitia</title>
-<script src="https://unpkg.com/html5-qrcode"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#eef2f5;font:15px Arial}
-main{max-width:800px;margin:auto;padding:15px}.card{background:white;padding:16px;margin:12px 0;border-radius:10px}
+*{box-sizing:border-box}body{margin:0;background:#eef2f5;font:15px Arial;color:#17202a}
+main{max-width:800px;margin:auto;padding:15px}.card{background:#fff;padding:16px;margin:12px 0;border-radius:10px}
 input,textarea,button{width:100%;padding:12px;margin:6px 0;font-size:16px}
-textarea{height:130px}button{border:0;border-radius:8px;background:#08783e;color:white;font-weight:bold}
-.red{background:#b42318}.gray{background:#34495e}table{width:100%;border-collapse:collapse}
-th,td{padding:8px;border:1px solid #ddd}.scroll{overflow:auto}
-#modeAbsen,#kamera{display:none;position:fixed;inset:0;z-index:20;background:#07552e;color:white}
-#modeAbsen{padding:25px;text-align:center}#modeAbsen button{max-width:450px;margin:10px auto;display:block}
-#hasil{background:white;color:#111;padding:20px;border-radius:10px;max-width:450px;margin:25px auto}
-#kamera{z-index:30;background:#000}#reader{width:100%;height:100%}
+textarea{height:130px}button{border:0;border-radius:8px;background:#08783e;color:#fff;font-weight:bold}
+.red{background:#b42318}.gray{background:#34495e}.scroll{overflow:auto}
+table{width:100%;border-collapse:collapse}th,td{padding:8px;border:1px solid #ddd}
+#mode{display:none;position:fixed;inset:0;z-index:20;padding:25px;overflow:auto;text-align:center;background:#07552e;color:#fff}
+#mode>button{max-width:450px;display:block;margin:10px auto}
+#hasil{max-width:450px;margin:25px auto;padding:20px;border-radius:10px;background:#fff;color:#111}
+#kamera{display:none;position:fixed;inset:0;z-index:30;background:#000}
+#reader,#reader video{width:100%!important;height:100%!important}
+#reader video{object-fit:cover!important}
+#tutup{position:fixed;z-index:40;left:5%;bottom:20px;width:90%}
 </style>
 </head>
 <body>
-<main id="input">
+<main>
 <h2>Absensi Panitia Sepak Bola</h2>
-<div class="card">Data panitia, format <b>ID,Nama</b>
+<div class="card">Format: <b>ID,Nama</b>
 <textarea id="orang" placeholder="P001,Budi&#10;P002,Siti"></textarea>
 <button onclick="simpanPanitia()">Simpan Panitia</button></div>
 <div class="card">Tanggal mulai<input type="date" id="awal">
@@ -28,174 +32,72 @@ Tanggal selesai<input type="date" id="akhir">
 <button onclick="simpanPeriode()">Simpan Periode</button></div>
 <div class="card"><button onclick="bukaMode()">Mulai Absen</button>
 <button class="gray" onclick="unduh()">Unduh CSV</button></div>
-<div class="card scroll"><table><thead><tr><th>ID</th><th>Nama</th><th>Hadir</th><th>Tidak Hadir</th></tr></thead>
-<tbody id="rekap"></tbody></table></div>
+<div class="card scroll"><table><thead><tr><th>ID</th><th>Nama</th><th>Hadir</th><th>Tidak Hadir</th></tr></thead><tbody id="rekap"></tbody></table></div>
 </main>
 
-<div id="modeAbsen">
+<div id="mode">
 <h1>Absensi Panitia</h1>
 <div id="hasil">Tekan tombol untuk memindai QR.</div>
 <button onclick="bukaKamera()">Buka Kamera</button>
 <button class="red" onclick="kembali()">Kembali ke Halaman Input</button>
+<div id="kamera"><div id="reader"></div>
+<button id="tutup" class="red" onclick="tutupKamera()">Tutup Kamera</button></div>
 </div>
-<div id="kamera">
-  <div id="reader"></div>
-  <button id="tutupKamera" class="red" type="button">
-    Tutup Kamera
-  </button>
-</div>
-
-#tutupKamera{
-  position:fixed;
-  z-index:40;
-  left:5%;
-  bottom:20px;
-  width:90%;
-}
 
 <script>
-let P=JSON.parse(localStorage.P||"[]"),A=JSON.parse(localStorage.A||"{}"),
-R=JSON.parse(localStorage.R||"{}"),Q=null,proses=false;
+const $=id=>document.getElementById(id),orang=$("orang"),awal=$("awal"),akhir=$("akhir"),mode=$("mode"),kamera=$("kamera"),hasil=$("hasil"),rekap=$("rekap");
+let P=JSON.parse(localStorage.P||"[]"),A=JSON.parse(localStorage.A||"{}"),R=JSON.parse(localStorage.R||"{}"),Q=null,proses=false;
 orang.value=P.map(x=>x.id+","+x.nama).join("\n");awal.value=R.awal||"";akhir.value=R.akhir||"";
-const hari=()=>{let d=new Date(),z=n=>String(n).padStart(2,"0");return`${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`};
+const hari=()=>new Date().toLocaleDateString("sv-SE");
+
 function simpanPanitia(){
- let m=new Map();orang.value.split("\n").forEach(b=>{let [id,...n]=b.split(",");if(id&&n.length)m.set(id.trim(),{id:id.trim(),nama:n.join(",").trim()})});
+ let m=new Map();orang.value.split("\n").forEach(b=>{let [id,...n]=b.split(",");id=id?.trim();let nama=n.join(",").trim();if(id&&nama)m.set(id,{id,nama})});
  P=[...m.values()];localStorage.P=JSON.stringify(P);tampil();alert("Data tersimpan.");
 }
 function simpanPeriode(){
  if(!awal.value||!akhir.value||awal.value>akhir.value)return alert("Periode tidak valid.");
- R={awal:awal.value,akhir:akhir.value};localStorage.R=JSON.stringify(R);tampil();
+ R={awal:awal.value,akhir:akhir.value};localStorage.R=JSON.stringify(R);tampil();alert("Periode tersimpan.");
 }
 function total(){
- if(!R.awal||hari()<R.awal)return 0;let b=hari()<R.akhir?hari():R.akhir;
- return Math.floor((new Date(b)-new Date(R.awal))/86400000)+1;
+ if(!R.awal||hari()<R.awal)return 0;
+ let b=hari()<R.akhir?hari():R.akhir;
+ return Math.round((new Date(b+"T00:00:00")-new Date(R.awal+"T00:00:00"))/864e5)+1;
 }
 async function bukaMode(){
  if(!P.length||!R.awal)return alert("Lengkapi data panitia dan periode.");
- if(hari()<R.awal||hari()>R.akhir)return alert("Di luar periode kompetisi.");
- modeAbsen.style.display="block";
- try{await modeAbsen.requestFullscreen()}catch(e){}
+ if(hari()<R.awal||hari()>R.akhir)return alert("Hari ini di luar periode.");
+ mode.style.display="block";try{await mode.requestFullscreen()}catch(e){}
 }
-const elemenKamera = document.getElementById("kamera");
-const elemenReader = document.getElementById("reader");
-const elemenHasil = document.getElementById("hasil");
-const tombolTutup = document.getElementById("tutupKamera");
-
-async function bukaKamera() {
-  if (Q) return;
-
-  if (!window.isSecureContext) {
-    elemenHasil.textContent =
-      "Kamera diblokir karena halaman tidak menggunakan HTTPS.";
-    alert(
-      "Chrome Android tidak mengizinkan kamera langsung dari file lokal. " +
-      "Buka halaman melalui HTTPS."
-    );
-    return;
-  }
-
-  elemenKamera.style.display = "block";
-  elemenHasil.textContent = "Membuka kamera...";
-  proses = false;
-
-  try {
-    const izin = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: "environment" } }
-    });
-
-    izin.getTracks().forEach(track => track.stop());
-
-    Q = new Html5Qrcode("reader");
-
-    await Q.start(
-      { facingMode: { ideal: "environment" } },
-      {
-        fps: 10,
-        qrbox: function(viewWidth, viewHeight) {
-          const ukuran = Math.floor(
-            Math.min(viewWidth, viewHeight) * 0.7
-          );
-          return { width: ukuran, height: ukuran };
-        },
-        aspectRatio: 1
-      },
-      baca,
-      function() {
-        // Kesalahan pembacaan setiap frame sengaja diabaikan.
-      }
-    );
-
-    elemenHasil.textContent = "Arahkan kamera ke QR panitia.";
-  } catch (error) {
-    await tutupKamera();
-
-    let keterangan = error.message || String(error);
-
-    if (error.name === "NotAllowedError") {
-      keterangan = "Izin kamera ditolak. Aktifkan izin kamera untuk browser.";
-    } else if (error.name === "NotFoundError") {
-      keterangan = "Kamera tidak ditemukan pada perangkat.";
-    } else if (error.name === "NotReadableError") {
-      keterangan = "Kamera sedang digunakan oleh aplikasi lain.";
-    }
-
-    elemenHasil.textContent = keterangan;
-    alert("Kamera gagal dibuka: " + keterangan);
-  }
+async function bukaKamera(){
+ if(Q)return;if(typeof Html5Qrcode==="undefined")return alert("Pustaka QR gagal dimuat.");
+ kamera.style.display="block";hasil.textContent="Membuka kamera...";
+ try{
+  Q=new Html5Qrcode("reader");
+  await Q.start({facingMode:"environment"},{fps:10,qrbox:{width:250,height:250}},baca,()=>{});
+  hasil.textContent="Arahkan kamera ke QR.";
+ }catch(e){await tutupKamera();alert("Kamera gagal: "+(e.message||e));}
 }
-
-async function baca(teksQR) {
-  if (proses) return;
-  proses = true;
-
-  const id = String(teksQR).trim();
-  const panitia = P.find(item => item.id === id);
-  const kunci = hari() + "|" + id;
-
-  if (!panitia) {
-    elemenHasil.textContent = "QR tidak terdaftar: " + id;
-  } else if (A[kunci]) {
-    elemenHasil.textContent =
-      panitia.nama + " sudah melakukan absensi hari ini.";
-  } else {
-    A[kunci] = new Date().toLocaleTimeString("id-ID");
-    localStorage.setItem("A", JSON.stringify(A));
-
-    elemenHasil.textContent =
-      "Absensi berhasil: " + panitia.nama;
-
-    tampil();
-  }
-
-  await tutupKamera();
+async function baca(teks){
+ if(proses)return;proses=true;
+ let id=String(teks).trim(),p=P.find(x=>x.id===id),k=hari()+"|"+id;
+ if(!p)hasil.textContent="QR tidak terdaftar: "+id;
+ else if(A[k])hasil.textContent=p.nama+" sudah absen.";
+ else{A[k]=new Date().toLocaleTimeString("id-ID");localStorage.A=JSON.stringify(A);hasil.textContent="Berhasil: "+p.nama;tampil()}
+ await tutupKamera();
 }
-
-async function tutupKamera() {
-  if (Q) {
-    try {
-      if (Q.isScanning) await Q.stop();
-      await Q.clear();
-    } catch (error) {
-      console.error(error);
-    }
-  }
-
-  Q = null;
-  proses = false;
-  elemenKamera.style.display = "none";
-  elemenReader.innerHTML = "";
+async function tutupKamera(){
+ if(Q)try{if(Q.isScanning)await Q.stop();await Q.clear()}catch(e){}
+ Q=null;proses=false;kamera.style.display="none";$("reader").innerHTML="";
 }
-
-tombolTutup.addEventListener("click", tutupKamera);
-async function kembali(){
- if(Q)try{await Q.stop()}catch(e){}modeAbsen.style.display=kamera.style.display="none";
- if(document.fullscreenElement)await document.exitFullscreen();
-}
+async function kembali(){await tutupKamera();mode.style.display="none";if(document.fullscreenElement)await document.exitFullscreen()}
 function tampil(){
- let t=total();rekap.innerHTML=P.map(p=>{let h=Object.keys(A).filter(k=>k.endsWith("|"+p.id)&&k.split("|")[0]>=R.awal&&k.split("|")[0]<=R.akhir).length;
- return`<tr><td>${p.id}</td><td>${p.nama}</td><td>${h}</td><td>${Math.max(0,t-h)}</td></tr>`}).join("");
+ let t=total();rekap.innerHTML="";
+ P.forEach(p=>{let h=Object.keys(A).filter(k=>k.endsWith("|"+p.id)&&k.split("|")[0]>=R.awal&&k.split("|")[0]<=R.akhir).length,r=rekap.insertRow();[p.id,p.nama,h,Math.max(0,t-h)].forEach(v=>r.insertCell().textContent=v)});
 }
-function unduh(){let s="ID,Nama,Hadir,Tidak Hadir\n"+[...rekap.rows].map(r=>[...r.cells].map(c=>`"${c.innerText}"`).join(",")).join("\n"),a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+s]));a.download="rekap.csv";a.click()}
+function unduh(){
+ let s="ID,Nama,Hadir,Tidak Hadir\n"+[...rekap.rows].map(r=>[...r.cells].map(c=>`"${c.textContent.replaceAll('"','""')}"`).join(",")).join("\n"),a=document.createElement("a");
+ a.href=URL.createObjectURL(new Blob(["\ufeff"+s],{type:"text/csv"}));a.download="rekap.csv";a.click();
+}
 tampil();
 </script>
 </body>
