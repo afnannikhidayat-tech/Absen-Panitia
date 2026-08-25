@@ -38,7 +38,20 @@ Tanggal selesai<input type="date" id="akhir">
 <button onclick="bukaKamera()">Buka Kamera</button>
 <button class="red" onclick="kembali()">Kembali ke Halaman Input</button>
 </div>
-<div id="kamera"><div id="reader"></div></div>
+<div id="kamera">
+  <div id="reader"></div>
+  <button id="tutupKamera" class="red" type="button">
+    Tutup Kamera
+  </button>
+</div>
+
+#tutupKamera{
+  position:fixed;
+  z-index:40;
+  left:5%;
+  bottom:20px;
+  width:90%;
+}
 
 <script>
 let P=JSON.parse(localStorage.P||"[]"),A=JSON.parse(localStorage.A||"{}"),
@@ -63,18 +76,117 @@ async function bukaMode(){
  modeAbsen.style.display="block";
  try{await modeAbsen.requestFullscreen()}catch(e){}
 }
-async function bukaKamera(){
- kamera.style.display="block";proses=false;Q=new Html5Qrcode("reader");
- try{await Q.start({facingMode:"environment"},{fps:10,qrbox:250},baca)}
- catch(e){kamera.style.display="none";alert("Kamera gagal dibuka.");}
+const elemenKamera = document.getElementById("kamera");
+const elemenReader = document.getElementById("reader");
+const elemenHasil = document.getElementById("hasil");
+const tombolTutup = document.getElementById("tutupKamera");
+
+async function bukaKamera() {
+  if (Q) return;
+
+  if (!window.isSecureContext) {
+    elemenHasil.textContent =
+      "Kamera diblokir karena halaman tidak menggunakan HTTPS.";
+    alert(
+      "Chrome Android tidak mengizinkan kamera langsung dari file lokal. " +
+      "Buka halaman melalui HTTPS."
+    );
+    return;
+  }
+
+  elemenKamera.style.display = "block";
+  elemenHasil.textContent = "Membuka kamera...";
+  proses = false;
+
+  try {
+    const izin = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } }
+    });
+
+    izin.getTracks().forEach(track => track.stop());
+
+    Q = new Html5Qrcode("reader");
+
+    await Q.start(
+      { facingMode: { ideal: "environment" } },
+      {
+        fps: 10,
+        qrbox: function(viewWidth, viewHeight) {
+          const ukuran = Math.floor(
+            Math.min(viewWidth, viewHeight) * 0.7
+          );
+          return { width: ukuran, height: ukuran };
+        },
+        aspectRatio: 1
+      },
+      baca,
+      function() {
+        // Kesalahan pembacaan setiap frame sengaja diabaikan.
+      }
+    );
+
+    elemenHasil.textContent = "Arahkan kamera ke QR panitia.";
+  } catch (error) {
+    await tutupKamera();
+
+    let keterangan = error.message || String(error);
+
+    if (error.name === "NotAllowedError") {
+      keterangan = "Izin kamera ditolak. Aktifkan izin kamera untuk browser.";
+    } else if (error.name === "NotFoundError") {
+      keterangan = "Kamera tidak ditemukan pada perangkat.";
+    } else if (error.name === "NotReadableError") {
+      keterangan = "Kamera sedang digunakan oleh aplikasi lain.";
+    }
+
+    elemenHasil.textContent = keterangan;
+    alert("Kamera gagal dibuka: " + keterangan);
+  }
 }
-async function baca(id){
- if(proses)return;proses=true;id=id.trim();let p=P.find(x=>x.id===id),k=hari()+"|"+id;
- if(!p)hasil.textContent="QR tidak terdaftar: "+id;
- else if(A[k])hasil.textContent=p.nama+" sudah absen hari ini.";
- else{A[k]=new Date().toLocaleTimeString("id-ID");localStorage.A=JSON.stringify(A);hasil.textContent="Berhasil: "+p.nama;tampil()}
- try{await Q.stop();await Q.clear()}catch(e){}Q=null;kamera.style.display="none";
+
+async function baca(teksQR) {
+  if (proses) return;
+  proses = true;
+
+  const id = String(teksQR).trim();
+  const panitia = P.find(item => item.id === id);
+  const kunci = hari() + "|" + id;
+
+  if (!panitia) {
+    elemenHasil.textContent = "QR tidak terdaftar: " + id;
+  } else if (A[kunci]) {
+    elemenHasil.textContent =
+      panitia.nama + " sudah melakukan absensi hari ini.";
+  } else {
+    A[kunci] = new Date().toLocaleTimeString("id-ID");
+    localStorage.setItem("A", JSON.stringify(A));
+
+    elemenHasil.textContent =
+      "Absensi berhasil: " + panitia.nama;
+
+    tampil();
+  }
+
+  await tutupKamera();
 }
+
+async function tutupKamera() {
+  if (Q) {
+    try {
+      if (Q.isScanning) await Q.stop();
+      await Q.clear();
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  Q = null;
+  proses = false;
+  elemenKamera.style.display = "none";
+  elemenReader.innerHTML = "";
+}
+
+tombolTutup.addEventListener("click", tutupKamera);
 async function kembali(){
  if(Q)try{await Q.stop()}catch(e){}modeAbsen.style.display=kamera.style.display="none";
  if(document.fullscreenElement)await document.exitFullscreen();
