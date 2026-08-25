@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Absensi Panitia Sepak Bola</title>
+<script src="https://unpkg.com/html5-qrcode"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#eef2f5;font:15px Arial;color:#17202a}
+main{max-width:800px;margin:auto;padding:15px}
+section{background:#fff;padding:16px;margin-bottom:14px;border-radius:10px}
+input,textarea,button{width:100%;padding:12px;margin:6px 0;font-size:16px}
+textarea{height:140px}
+button{border:0;border-radius:7px;background:#08783e;color:#fff;font-weight:bold}
+.secondary{background:#34495e}
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px;border:1px solid #ddd;text-align:left}
+.table-wrap{overflow:auto}
+
+/* Scanner layar penuh */
+#scan{
+ display:none;position:fixed;inset:0;z-index:9999;
+ background:#000;color:#fff
+}
+#reader{width:100%;height:100%}
+#keluar{
+ position:absolute;z-index:10001;top:15px;right:15px;
+ width:auto;background:#b42318
+}
+#pesan{
+ position:absolute;z-index:10001;bottom:20px;left:5%;
+ width:90%;padding:14px;border-radius:8px;
+ background:#fff;color:#111;text-align:center;font-weight:bold
+}
+</style>
+</head>
+<body>
+
+<main>
+<h2>Absensi Panitia Sepak Bola</h2>
+
+<section>
+ <strong>Data panitia massal</strong>
+ <p>Format: <code>ID,Nama</code>, satu panitia per baris.</p>
+ <textarea id="orang" placeholder="P001,Budi Santoso&#10;P002,Siti Aminah"></textarea>
+ <button onclick="simpanPanitia()">Simpan Data Panitia</button>
+</section>
+
+<section>
+ <strong>Periode kompetisi</strong>
+ <label>Tanggal mulai</label>
+ <input type="date" id="mulai">
+ <label>Tanggal selesai</label>
+ <input type="date" id="akhir">
+ <button onclick="simpanPeriode()">Simpan Periode</button>
+</section>
+
+<section>
+ <button onclick="mulaiScan()">Mulai Absensi</button>
+ <button class="secondary" onclick="unduhCSV()">Unduh Rekap CSV</button>
+</section>
+
+<section>
+ <strong>Rekap Kehadiran</strong>
+ <p id="info"></p>
+ <div class="table-wrap">
+  <table>
+   <thead>
+    <tr><th>ID</th><th>Nama</th><th>Hadir</th><th>Tidak Hadir</th></tr>
+   </thead>
+   <tbody id="rekap"></tbody>
+  </table>
+ </div>
+</section>
+</main>
+
+<div id="scan">
+ <button id="keluar" onclick="selesaiScan()">Keluar</button>
+ <div id="reader"></div>
+ <div id="pesan">Arahkan kamera ke QR panitia</div>
+</div>
+
+<script>
+let panitia=JSON.parse(localStorage.getItem("panitia")||"[]");
+let absensi=JSON.parse(localStorage.getItem("absensi")||"{}");
+let periode=JSON.parse(localStorage.getItem("periode")||"{}");
+let scanner=null, terkunci=false;
+
+orang.value=panitia.map(x=>x.id+","+x.nama).join("\n");
+mulai.value=periode.mulai||"";
+akhir.value=periode.akhir||"";
+
+function tanggalHariIni(){
+ const d=new Date(), z=n=>String(n).padStart(2,"0");
+ return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;
+}
+
+function aman(teks){
+ const d=document.createElement("div");
+ d.textContent=teks;
+ return d.innerHTML;
+}
+
+function simpanPanitia(){
+ const hasil=[], idTerpakai=new Set();
+
+ orang.value.split("\n").forEach((baris,i)=>{
+  if(!baris.trim()) return;
+  const bagian=baris.split(",");
+  const id=bagian.shift().trim();
+  const nama=bagian.join(",").trim();
+
+  if(id && nama && !idTerpakai.has(id)){
+   hasil.push({id,nama});
+   idTerpakai.add(id);
+  }
+ });
+
+ panitia=hasil;
+ localStorage.setItem("panitia",JSON.stringify(panitia));
+ tampilkan();
+ alert(panitia.length+" panitia berhasil disimpan.");
+}
+
+function simpanPeriode(){
+ if(!mulai.value||!akhir.value) return alert("Lengkapi periode kompetisi.");
+ if(mulai.value>akhir.value) return alert("Tanggal mulai tidak boleh melewati tanggal selesai.");
+
+ periode={mulai:mulai.value,akhir:akhir.value};
+ localStorage.setItem("periode",JSON.stringify(periode));
+ tampilkan();
+ alert("Periode berhasil disimpan.");
+}
+
+function jumlahHariTerhitung(){
+ if(!periode.mulai||!periode.akhir) return 0;
+
+ const batas=tanggalHariIni()<periode.akhir?tanggalHariIni():periode.akhir;
+ if(batas<periode.mulai) return 0;
+
+ const awal=new Date(periode.mulai+"T00:00:00");
+ const selesai=new Date(batas+"T00:00:00");
+ return Math.round((selesai-awal)/86400000)+1;
+}
+
+async function mulaiScan(){
+ const hari=tanggalHariIni();
+
+ if(!panitia.length) return alert("Data panitia belum tersedia.");
+ if(!periode.mulai||!periode.akhir) return alert("Periode belum diatur.");
+ if(hari<periode.mulai||hari>periode.akhir)
+  return alert("Hari ini berada di luar periode kompetisi.");
+
+ scan.style.display="block";
+ scanner=new Html5Qrcode("reader");
+
+ try{
+  await scanner.start(
+   {facingMode:"environment"},
+   {fps:10,qrbox:{width:250,height:250}},
+   bacaQR
+  );
+ }catch(e){
+  scan.style.display="none";
+  alert("Kamera gagal dibuka. Gunakan HTTPS dan izinkan akses kamera.");
+ }
+}
+
+async function bacaQR(id){
+ if(terkunci) return;
+ terkunci=true;
+
+ id=id.trim();
+ const orang=panitia.find(x=>x.id===id);
+ const kunci=tanggalHariIni()+"|"+id;
+
+ if(!orang){
+  pesan.textContent="QR tidak terdaftar: "+id;
+ }else if(absensi[kunci]){
+  pesan.textContent=orang.nama+" sudah absen hari ini.";
+ }else{
+  absensi[kunci]=new Date().toLocaleTimeString("id-ID");
+  localStorage.setItem("absensi",JSON.stringify(absensi));
+  pesan.textContent="Berhasil: "+orang.nama;
+  tampilkan();
+ }
+
+ setTimeout(()=>terkunci=false,1800);
+}
+
+async function selesaiScan(){
+ try{if(scanner) await scanner.stop()}catch(e){}
+ scanner=null;
+ scan.style.display="none";
+}
+
+function tampilkan(){
+ const total=jumlahHariTerhitung();
+
+ rekap.innerHTML=panitia.map(p=>{
+  const hadir=Object.keys(absensi).filter(k=>k.endsWith("|"+p.id)).length;
+  return `<tr><td>${aman(p.id)}</td><td>${aman(p.nama)}</td>
+  <td>${hadir}</td><td>${Math.max(0,total-hadir)}</td></tr>`;
+ }).join("");
+
+ info.textContent="Hari wajib hadir yang telah terhitung: "+total;
+}
+
+function unduhCSV(){
+ const total=jumlahHariTerhitung();
+ const baris=[["ID","Nama","Hadir","Tidak Hadir"]];
+
+ panitia.forEach(p=>{
+  const hadir=Object.keys(absensi).filter(k=>k.endsWith("|"+p.id)).length;
+  baris.push([p.id,p.nama,hadir,Math.max(0,total-hadir)]);
+ });
+
+ const csv=baris.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(",")).join("\n");
+ const a=document.createElement("a");
+ a.href=URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv"}));
+ a.download="rekap-absensi.csv";
+ a.click();
+}
+
+tampilkan();
+</script>
+</body>
+</html>
