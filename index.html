@@ -68,14 +68,69 @@ async function bukaMode(){
  if(hari()<R.awal||hari()>R.akhir)return alert("Hari ini di luar periode.");
  mode.style.display="block";try{await mode.requestFullscreen()}catch(e){}
 }
-async function bukaKamera(){
- if(Q)return;if(typeof Html5Qrcode==="undefined")return alert("Pustaka QR gagal dimuat.");
- kamera.style.display="block";hasil.textContent="Membuka kamera...";
- try{
-  Q=new Html5Qrcode("reader");
-  await Q.start({facingMode:"environment"},{fps:10,qrbox:{width:250,height:250}},baca,()=>{});
-  hasil.textContent="Arahkan kamera ke QR.";
- }catch(e){await tutupKamera();alert("Kamera gagal: "+(e.message||e));}
+async function bukaKamera() {
+  if (Q) return;
+
+  if (typeof Html5Qrcode === "undefined") {
+    alert("Pustaka QR gagal dimuat. Periksa koneksi internet.");
+    return;
+  }
+
+  kamera.style.display = "block";
+  hasil.textContent = "Membuka kamera...";
+  proses = false;
+
+  try {
+    Q = new Html5Qrcode("reader");
+
+    try {
+      // Mencoba membuka kamera belakang secara eksplisit.
+      await Q.start(
+        { facingMode: { exact: "environment" } },
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1
+        },
+        baca,
+        () => {}
+      );
+    } catch (errorKameraBelakang) {
+      console.warn(
+        "Kamera belakang tidak dapat dipilih, memakai kamera tersedia:",
+        errorKameraBelakang
+      );
+
+      // Bersihkan objek pemindai sebelum percobaan kedua.
+      try {
+        await Q.clear();
+      } catch (error) {}
+
+      Q = new Html5Qrcode("reader");
+
+      // Format string didukung oleh html5-qrcode.
+      await Q.start(
+        "environment",
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1
+        },
+        baca,
+        () => {}
+      );
+    }
+
+    hasil.textContent = "Arahkan kamera ke QR panitia.";
+  } catch (error) {
+    console.error("Kesalahan kamera:", error);
+
+    const pesan = error?.message || String(error);
+
+    await tutupKamera();
+    hasil.textContent = "Kamera gagal dibuka: " + pesan;
+    alert("Kamera gagal dibuka: " + pesan);
+  }
 }
 async function baca(teks){
  if(proses)return;proses=true;
