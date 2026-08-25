@@ -6,25 +6,27 @@
 <title>Absensi Panitia</title>
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#eef2f5;font:15px Arial}main{max-width:800px;margin:auto;padding:15px}.card{background:#fff;padding:16px;margin:12px 0;border-radius:10px}input,textarea,button{width:100%;padding:12px;margin:6px 0;font-size:16px}textarea{height:130px}button{border:0;border-radius:8px;background:#08783e;color:#fff;font-weight:bold}.red{background:#b42318}.gray{background:#34495e}table{width:100%;border-collapse:collapse}th,td{padding:8px;border:1px solid #ddd}.scroll{overflow:auto}#mode{display:none;position:fixed;inset:0;z-index:20;padding:25px;text-align:center;background:#07552e;color:#fff}#mode>button{max-width:450px;margin:10px auto;display:block}#hasil{max-width:450px;margin:25px auto;padding:20px;border-radius:10px;background:#fff;color:#111}#kamera{display:none;position:fixed;inset:0;z-index:30;background:#000}#reader,#reader video{width:100%!important;height:100%!important}#reader video{object-fit:cover!important}#tutup{position:fixed;z-index:40;left:5%;bottom:20px;width:90%}
+*{box-sizing:border-box}body{margin:0;background:#eef2f5;font:15px Arial}main{max-width:800px;margin:auto;padding:15px}.card{background:#fff;padding:16px;margin:12px 0;border-radius:10px}input,textarea,button{width:100%;padding:12px;margin:6px 0;font-size:16px}textarea{height:130px}button{border:0;border-radius:8px;background:#08783e;color:#fff;font-weight:bold}.red{background:#b42318}.gray{background:#345}.scroll{overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:8px;border:1px solid #ddd}#mode{display:none;position:fixed;inset:0;z-index:20;padding:25px;text-align:center;background:#07552e;color:#fff}#mode>button{max-width:450px;margin:10px auto}#hasil{background:#fff;color:#111;padding:20px;border-radius:10px;max-width:450px;margin:25px auto}#kamera{display:none;position:fixed;inset:0;z-index:30;background:#000}#reader,#reader video{width:100%!important;height:100%!important}#reader video{object-fit:cover!important}#tutup{position:fixed;z-index:40;left:5%;bottom:20px;width:90%}
 </style>
 </head>
 <body>
 <main>
 <h2>Absensi Panitia Sepak Bola</h2>
-<div class="card">Format <b>ID,Nama</b>
+<div class="card">Format data: <b>ID,Nama</b>
 <textarea id="orang" placeholder="P001,Budi&#10;P002,Siti"></textarea>
-<button onclick="simpanPanitia()">Simpan Panitia</button></div>
-<div class="card">Tanggal mulai<input type="date" id="awal">
-Tanggal selesai<input type="date" id="akhir">
-<button onclick="simpanPeriode()">Simpan Periode</button></div>
+<button onclick="simpan()">Simpan Panitia</button>
+<button class="gray" onclick="file.click()">Impor Panitia dari CSV</button>
+<input id="file" type="file" accept=".csv,text/csv" hidden>
+</div>
+<div class="card">Tanggal mulai<input id="awal" type="date">
+Tanggal selesai<input id="akhir" type="date">
+<button onclick="periode()">Simpan Periode</button></div>
 <div class="card"><button onclick="bukaMode()">Mulai Absen</button>
 <button class="gray" onclick="unduh()">Unduh CSV</button></div>
 <div class="card scroll"><table><thead><tr><th>ID</th><th>Nama</th><th>Hadir</th><th>Tidak Hadir</th></tr></thead><tbody id="rekap"></tbody></table></div>
 </main>
 
-<div id="mode">
-<h1>Absensi Panitia</h1>
+<div id="mode"><h1>Absensi Panitia</h1>
 <div id="hasil">Tekan tombol untuk memindai QR.</div>
 <button onclick="bukaKamera()">Buka Kamera</button>
 <button class="red" onclick="kembali()">Kembali</button>
@@ -33,21 +35,22 @@ Tanggal selesai<input type="date" id="akhir">
 </div>
 
 <script>
-const $=x=>document.getElementById(x),orang=$("orang"),awal=$("awal"),akhir=$("akhir"),mode=$("mode"),kamera=$("kamera"),hasil=$("hasil"),rekap=$("rekap");
+const $=x=>document.getElementById(x),E={orang:$("orang"),awal:$("awal"),akhir:$("akhir"),file:$("file"),mode:$("mode"),kamera:$("kamera"),hasil:$("hasil"),rekap:$("rekap")};
 let P=JSON.parse(localStorage.P||"[]"),A=JSON.parse(localStorage.A||"{}"),R=JSON.parse(localStorage.R||"{}"),Q=null,proses=false,audio;
-orang.value=P.map(x=>x.id+","+x.nama).join("\n");awal.value=R.awal||"";akhir.value=R.akhir||"";
+E.orang.value=P.map(x=>x.id+","+x.nama).join("\n");E.awal.value=R.awal||"";E.akhir.value=R.akhir||"";
 const hari=()=>new Date().toLocaleDateString("sv-SE");
-function bunyi(ok){audio||=(new(window.AudioContext||window.webkitAudioContext));audio.resume();let nada=ok?[660,880]:[220,165];nada.forEach((f,i)=>{let o=audio.createOscillator(),g=audio.createGain(),t=audio.currentTime+i*.2;o.frequency.value=f;o.type=ok?"sine":"square";g.gain.setValueAtTime(.25,t);g.gain.exponentialRampToValueAtTime(.001,t+.25);o.connect(g);g.connect(audio.destination);o.start(t);o.stop(t+.25)})}
-function simpanPanitia(){let m=new Map();orang.value.split("\n").forEach(b=>{let[id,...n]=b.split(","),nama=n.join(",").trim();id=id?.trim();if(id&&nama)m.set(id,{id,nama})});P=[...m.values()];localStorage.P=JSON.stringify(P);tampil();alert("Data tersimpan.")}
-function simpanPeriode(){if(!awal.value||!akhir.value||awal.value>akhir.value)return alert("Periode tidak valid.");R={awal:awal.value,akhir:akhir.value};localStorage.R=JSON.stringify(R);tampil()}
+function bunyi(ok){audio||=new(window.AudioContext||window.webkitAudioContext);audio.resume();(ok?[660,880]:[220,165]).forEach((f,i)=>{let o=audio.createOscillator(),g=audio.createGain(),t=audio.currentTime+i*.2;o.frequency.value=f;o.type=ok?"sine":"square";g.gain.setValueAtTime(.25,t);g.gain.exponentialRampToValueAtTime(.001,t+.25);o.connect(g);g.connect(audio.destination);o.start(t);o.stop(t+.25)})}
+function simpan(){let m=new Map;E.orang.value.split(/\r?\n/).forEach(b=>{let[id,...n]=b.split(/[,;]/),nama=n.join(",").trim();id=id?.replace(/^"|"$/g,"").trim();nama=nama.replace(/^"|"$/g,"");if(id&&nama&&!/^id$/i.test(id))m.set(id,{id,nama})});P=[...m.values()];localStorage.P=JSON.stringify(P);E.orang.value=P.map(x=>x.id+","+x.nama).join("\n");tampil();alert(P.length+" panitia tersimpan.")}
+E.file.onchange=()=>{let r=new FileReader;r.onload=()=>{E.orang.value=r.result.replace(/^\uFEFF/,"");simpan();E.file.value=""};r.readAsText(E.file.files[0])};
+function periode(){if(!E.awal.value||!E.akhir.value||E.awal.value>E.akhir.value)return alert("Periode tidak valid.");R={awal:E.awal.value,akhir:E.akhir.value};localStorage.R=JSON.stringify(R);tampil()}
 function total(){if(!R.awal||hari()<R.awal)return 0;let b=hari()<R.akhir?hari():R.akhir;return Math.round((new Date(b)-new Date(R.awal))/864e5)+1}
-async function bukaMode(){if(!P.length||!R.awal)return alert("Lengkapi data.");if(hari()<R.awal||hari()>R.akhir)return alert("Di luar periode.");mode.style.display="block";try{await mode.requestFullscreen()}catch(e){}}
-async function bukaKamera(){if(Q)return;try{bunyi(true);kamera.style.display="block";Q=new Html5Qrcode("reader");await Q.start({facingMode:"environment"},{fps:10,qrbox:{width:250,height:250}},baca,()=>{});hasil.textContent="Arahkan kamera ke QR."}catch(e){bunyi(false);await tutupKamera();alert("Kamera gagal: "+(e.message||e))}}
-async function baca(teks){if(proses)return;proses=true;let id=String(teks).trim(),p=P.find(x=>x.id===id),k=hari()+"|"+id;if(!p){hasil.textContent="QR tidak terdaftar.";bunyi(false)}else if(A[k]){hasil.textContent=p.nama+" sudah absen.";bunyi(false)}else{A[k]=new Date().toLocaleTimeString("id-ID");localStorage.A=JSON.stringify(A);hasil.textContent="Berhasil: "+p.nama;bunyi(true);tampil()}setTimeout(tutupKamera,600)}
-async function tutupKamera(){if(Q)try{if(Q.isScanning)await Q.stop();await Q.clear()}catch(e){}Q=null;proses=false;kamera.style.display="none";$("reader").innerHTML=""}
-async function kembali(){await tutupKamera();mode.style.display="none";if(document.fullscreenElement)await document.exitFullscreen()}
-function tampil(){let t=total();rekap.innerHTML=P.map(p=>{let h=Object.keys(A).filter(k=>k.endsWith("|"+p.id)&&k.split("|")[0]>=R.awal&&k.split("|")[0]<=R.akhir).length;return`<tr><td>${p.id}</td><td>${p.nama}</td><td>${h}</td><td>${Math.max(0,t-h)}</td></tr>`}).join("")}
-function unduh(){let s="ID,Nama,Hadir,Tidak Hadir\n"+[...rekap.rows].map(r=>[...r.cells].map(c=>`"${c.textContent.replaceAll('"','""')}"`).join(",")).join("\n"),a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+s]));a.download="rekap.csv";a.click()}
+async function bukaMode(){if(!P.length||!R.awal)return alert("Lengkapi data.");if(hari()<R.awal||hari()>R.akhir)return alert("Di luar periode.");E.mode.style.display="block";try{await E.mode.requestFullscreen()}catch(e){}}
+async function bukaKamera(){if(Q)return;try{E.kamera.style.display="block";Q=new Html5Qrcode("reader");await Q.start({facingMode:"environment"},{fps:10,qrbox:{width:250,height:250}},baca,()=>{});E.hasil.textContent="Arahkan kamera ke QR."}catch(e){bunyi(false);await tutupKamera();alert("Kamera gagal: "+(e.message||e))}}
+async function baca(teks){if(proses)return;proses=true;let id=String(teks).trim(),p=P.find(x=>x.id===id),k=hari()+"|"+id;if(!p){E.hasil.textContent="QR tidak terdaftar.";bunyi(false)}else if(A[k]){E.hasil.textContent=p.nama+" sudah absen.";bunyi(false)}else{A[k]=new Date().toLocaleTimeString("id-ID");localStorage.A=JSON.stringify(A);E.hasil.textContent="Berhasil: "+p.nama;bunyi(true);tampil()}setTimeout(tutupKamera,700)}
+async function tutupKamera(){if(Q)try{if(Q.isScanning)await Q.stop();await Q.clear()}catch(e){}Q=null;proses=false;E.kamera.style.display="none";$("reader").innerHTML=""}
+async function kembali(){await tutupKamera();E.mode.style.display="none";if(document.fullscreenElement)await document.exitFullscreen()}
+function tampil(){let t=total();E.rekap.innerHTML=P.map(p=>{let h=Object.keys(A).filter(k=>k.endsWith("|"+p.id)&&k.split("|")[0]>=R.awal&&k.split("|")[0]<=R.akhir).length;return`<tr><td>${p.id}</td><td>${p.nama}</td><td>${h}</td><td>${Math.max(0,t-h)}</td></tr>`}).join("")}
+function unduh(){let s="ID,Nama,Hadir,Tidak Hadir\n"+[...E.rekap.rows].map(r=>[...r.cells].map(c=>`"${c.textContent.replaceAll('"','""')}"`).join(",")).join("\n"),a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+s],{type:"text/csv"}));a.download="rekap.csv";a.click()}
 tampil();
 </script>
 </body>
